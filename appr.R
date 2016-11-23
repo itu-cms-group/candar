@@ -897,8 +897,129 @@ Filter.ShippingData <- function(Ship, # input raw shipping data after it is form
     
     return(Result)
   }
-### ABOVE 2 FUNCTIONS SHOULD BE TESTED! ###
+### ABOVE FUNCTION SHOULD BE TESTED! ###
   
+# a function for easily extracting summarized data out of unified data, on monthly basis.
+Outcost.Summary <- function(ship_unified, # the big unified shipdata, (latest) on monthly basis (e.g. month_m10 etc.)
+                            filter.stat = FALSE, # filter according to uses
+                            limit.stat = 5, # take if used equal or more than 5, remove rest
+                            col.products = 25, # column of product names in unified shipdata
+                            col.cost = 7, # column of shipping costs in unified shipdata
+                            col.dist = 20, # column of average distances in unified shipdata
+                            col.units = 27, # column of amount of shipped units
+                            col.price = 28, #  column of prices in unified shipdata
+                            col.wei = 26, #  column of weight in unified shipdata
+                            col.dur = 11, # column of durations in unified shipdata
+                            col.slat = 12, # column of sender lat in unified shipdata
+                            col.slon = 13, # column of sender lon in unified shipdata
+                            col.rlat = 14, # column of receipent lat in unified shipdata
+                            col.rlon = 15 # column of receipent lon in unified shipdata
+){
+  lvl <- levels(factor(ship_unified[,col.products])) # product name levels of the most expensive 100 deliveries in October
+  output <- as.data.frame(matrix(NA,length(lvl),13))
+  colnames(output) <- c("Product","TotalShippingCost","AveShippingCost","AveDistance","NumberofUses",
+                        "TotalUnitsShipped","Price","Weight","AveDuration","S.AveLat","S.AveLon","R.AveLat","R.AveLon")
+  for(i in 1:length(lvl)){
+    ind <- which(ship_unified[,col.products]==lvl[i])
+    output[i,] <- cbind(lvl[i], # product name #1
+                        as.numeric(sum(na.omit(ship_unified[ind,col.cost]))), # total cost #2
+                        as.numeric(mean(na.omit(ship_unified[ind,col.cost]))), # average cost #3
+                        as.numeric(mean(na.omit(ship_unified[ind,col.dist]))), # # average distance #4
+                        as.numeric(length(ind)), # number of uses #5 but not units
+                        as.numeric(sum(na.omit(ship_unified[ind,col.units]))), # number of shipped units #6
+                        as.numeric(ship_unified[match(lvl[i],ship_unified[,col.products]),col.price]), # price #7
+                        as.numeric(ship_unified[match(lvl[i],ship_unified[,col.products]),col.wei]), # weight #8
+                        as.numeric(mean(na.omit(ship_unified[ind,col.dur]))), # average duration #9
+                        as.numeric(mean(na.omit(ship_unified[ind,col.slat]))), # sender lattitude #10
+                        as.numeric(mean(na.omit(ship_unified[ind,col.slon]))), # sender longtitude #11
+                        as.numeric(mean(na.omit(ship_unified[ind,col.rlat]))), # receipent lattitude #12
+                        as.numeric(mean(na.omit(ship_unified[ind,col.rlon])))) # receipent longtitude #13
+  }
+  class(output$TotalShippingCost) <- "numeric"
+  output <- Convert(Sort(output,2,decreasing = TRUE),col = c(3,4,5,6,7,8,9,10,11,12,13))
+  if(filter.stat)
+    output <- output[which(output$NumberofUses>=limit.stat),] # filter by number of uses, just take which is delivered more than 4
+  return(output)
+}
+
+# Summarizes the content of the unified shipping data, gets information about states
+ByState.Summary <- function(ship_unified, # the big unified shipping data, ultimate. (preferred as on monthly basis)
+                            col.statecode = 19, # the number of column containing state codes either for sender or for receipent
+                            col.cost = 7,
+                            col.dist = 20,
+                            col.wei = 26,
+                            col.units = 27,
+                            col.price = 28
+){
+  levs <- as.character(levels(factor(ship_unified[,col.statecode])))
+  output <- as.data.frame(matrix(NA,length(levs),8))
+  colnames(output) <- c("StateCode","TotalShippingCost","AverageShippingCost","AverageDistance","TotalWeight",
+                        "NumberofUses","TotalUnitsShipped","GrossProfit")
+  for(i in 1:length(levs)){
+    index <- which(ship_unified[,col.statecode]==levs[i])
+    output[i,] <- cbind(levs[i], # state code
+                        as.numeric(sum(na.omit(ship_unified[index,col.cost]))), # total shipping cost
+                        as.numeric(mean(na.omit(ship_unified[index,col.cost]))), # average of shipping costs
+                        as.numeric(mean(na.omit(ship_unified[index,col.dist]))), # average distances, sent to or from that state
+                        as.numeric(sum(na.omit(ship_unified[index,col.wei]))), # total weight shipping in given time interval
+                        as.numeric(length(index)), # how many deliveries a state received or sent, number of uses
+                        as.numeric(sum(na.omit(ship_unified[index,col.units]))), # total number of items shipped
+                        as.numeric(sum(na.omit(ship_unified[index,col.price]))) # gross profit made from expensive deliveries
+    )
+  }
+  output <- Convert(output,2:8)
+  return(output)
+}
+
+# Distribution by state (choropleth) map
+# quickly map the output of ByState.Summary function, (choropleth map)
+ByState.Map <- function(data, # summarized data by state (output of function ByState.Summary()), monthly
+                        main="Outcost by State", # main title of the map
+                        filename = "USA_OUTCOST_BYSTATE.html" # name of the file to be saved
+){
+  require(plotly)
+  # specify line options
+  l <- list(color = toRGB("white"), width = 2)
+  
+  # specify some map projection/options
+  g <- list(scope = 'usa',projection = list(type = 'albers usa'),showlakes = TRUE,lakecolor = toRGB('white'))
+  
+  # list what should be displayed
+  notes <- paste("Total OutCost:",data$TotalShippingCost,"<br>Average Shipping Cost:",data$AverageShippingCost,
+                 "<br>Average Distance:",data$AverageDistance,"<br>Total Weight:",data$TotalWeight,
+                 "<br>Number of Deliveries:",data$NumberofUses,"<br>Number of Shipped Units:",data$TotalUnitsShipped,
+                 "<br>Associated Gross Profit:",data$GrossProfit)
+  
+  data[,2:8] <- round(data[,2:8],2) # round for better displaying
+  # draw map with respect to Gross Profit
+  p <- plot_ly(data = data , z = TotalShippingCost, text = notes, locations = StateCode, type = 'choropleth',
+               locationmode = 'USA-states', color = TotalShippingCost, colors = 'Blues',
+               marker = list(line = l), colorbar = list(title = "Total<br>Shipping<br>Cost (USD)")) %>%
+    layout(title = paste(main,'<br>(Hover for breakdown)',sep=""), geo = g)
+  
+  # save as an html page
+  htmlwidgets::saveWidget(as.widget(p), filename)
+  return(p)
+}
+
+# save multiple plotly objects in one page, with slider if needed, KEEP IT SAFE.
+save_tags <- function (tags, file, selfcontained = F, libdir = "./lib") 
+{
+  if (is.null(libdir)) {
+    libdir <- paste(tools::file_path_sans_ext(basename(file)), 
+                    "_files", sep = "")
+  }
+  htmltools::save_html(tags, file = file, libdir = libdir)
+  if (selfcontained) {
+    if (!htmlwidgets:::pandoc_available()) {
+      stop("Saving a widget with selfcontained = TRUE requires pandoc. For details see:\n", 
+           "https://github.com/rstudio/rmarkdown/blob/master/PANDOC.md")
+    }
+    htmlwidgets:::pandoc_self_contained_html(file, file)
+    unlink(libdir, recursive = TRUE)
+  }
+  return(htmltools::tags$iframe(src= file, height = "400px", width = "100%", style="border:0;"))
+}
 
 ### ----------------------------------------------------------------------- ###
 ### - Text File and Data Editor Functions --------------------------------- ###
