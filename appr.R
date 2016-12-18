@@ -853,51 +853,52 @@ Filter.ShippingData <- function(Ship, # input raw shipping data after it is form
   return(Result)
 }
   
-### FOLLOWING FUNCTION(S) SHOULD BE TESTED! ###  
-  # input ultimate filtered and location data included shipping data, for ONE quarter, and input number of the month and 
-  # raw sale data, this function will match shipping data with sale data, and create a one merged data.
-  Match.ShipData <- function(shipfiltered, # ultimate filtered and location data included shipping data 20 columns
-                             month, # input a month number as integer
-                             saledata, # raw sale data e.g. Month10.txt, Month11.txt etc.
-                             iterations = 10, # number of part to divide into when computing
-                             filename = "Most_Expensive_Matched_M11_", # file name to be saved
-                             begin = 1, # beginning of the for loop, could be continued from other steps
-                             ship.sonumber = 8, # sonumber column in filtered shipping data
-                             sale.sonumber = 1 # sonumber column in filtered sale data
-  ){
-    require("lubridate")
-    # create a directory for tidier work
-    main_path <- getwd() # "C:/Users/USER/Desktop/R"
-    current_path <- paste(getwd(),paste("DataMatch",sample(100,1),sep="_"),sep = "/") # folder names
-    dir.create(current_path) # create a new directory to store files
-    setwd(current_path) # set new working directory
-    
-    # pull out just one month, and sort according to shipping cost
-    temp_ship <- Sort(shipfiltered[which(month(shipfiltered$DateShipped)==as.integer(month)),],7,decreasing = TRUE)
-    temp_raw <- Search.List(temp_ship[,ship.sonumber],saledata,ship.sonumber)[,-1] # get corresponding rows of saledata, by sonumber
-    rows <- nrow(temp_ship) # get number of rows to use in following for loop
-    ## divide into fractions and then unify into one big file, for Month10.txt
-    for(i in begin:iterations){
-      cat("Step",i,"\n")
-      index <- seq((i-1)*(rows/iterations)+1,i*(rows/iterations)) # determine interval of indexes
-      test_match <- Match.rows(temp_ship[index,],ship.sonumber,temp_raw,ship.sonumber) # match data and bind together as a data frame
-      check_sen <- test_match[,4]==test_match[,23] & test_match[,5]==test_match[,24] # check receipent and sender zips whether they match
-      test_match <- test_match[check_sen,] # take only who match by zips
-      write.csv(test_match,paste(filename,i,".csv",sep = ""),row.names = FALSE) # write to file with order
-      cat("File",paste(filename,i,".csv",sep = ""),"is saved to",getwd(),"\n") # inform user
-    }
-    
-    Result <- data.frame()
-    for(i in 1:iterations)
-      Result <- rbind(Result,read.csv(paste(filename,i,".csv",sep = ""),row.names = NULL))
-    
-    setwd(main_path) # reset working directory
-    write.csv(Result,paste(filename,".csv",sep = ""),row.names = FALSE)
-    cat("File",paste(filename,".csv",sep = ""),"is saved to",getwd(),"\n") # inform user
-    
-    return(Result)
+
+# input ultimate filtered and location data included shipping data, for ONE quarter, and input number of the month and 
+# raw sale data, this function will match shipping data with sale data, and create a one merged data.
+Match.ShipData <- function(shipfiltered, # ultimate filtered and location data included shipping data 20 columns
+                           month, # input a month number as integer
+                           saledata, # raw sale data e.g. Month10.txt, Month11.txt etc.
+                           iterations = 10, # number of part to divide into when computing
+                           filename = "Most_Expensive_Matched_M11_", # file name to be saved
+                           begin = 1, # beginning of the for loop, could be continued from other steps
+                           ship.sonumber = 8, # sonumber column in filtered shipping data
+                           sale.sonumber = 1 # sonumber column in filtered sale data
+){
+  require("lubridate")
+  # create a directory for tidier work
+  main_path <- getwd() # "C:/Users/USER/Desktop/R"
+  current_path <- paste(getwd(),paste("DataMatch",sample(1000,1),sep="_"),sep = "/") # folder names
+  dir.create(current_path) # create a new directory to store files
+  setwd(current_path) # set new working directory
+  cat("Working directory is set to",current_path,"\n")
+  
+  # pull out just one month, and sort according to shipping cost
+  temp_ship <- Sort(shipfiltered[which(month(shipfiltered$DateShipped)==as.integer(month)),],7,decreasing = TRUE)
+  temp_raw <- Search.List(temp_ship[,ship.sonumber],saledata,sale.sonumber)[,-1] # get corresponding rows of saledata, by sonumber
+  rows <- nrow(temp_ship) # get number of rows to use in following for loop
+  ## divide into fractions and then unify into one big file, for Month10.txt
+  for(i in begin:iterations){
+    cat("Step",i,"\n")
+    index <- seq((i-1)*(rows/iterations)+1,i*(rows/iterations)) # determine interval of indexes
+    test_match <- Match.rows(temp_ship[index,],ship.sonumber,temp_raw,sale.sonumber) # match data and bind together as a data frame
+    check_sen <- test_match[,4]==test_match[,23] & test_match[,5]==test_match[,24] # check receipent and sender zips whether they match
+    test_match <- test_match[check_sen,] # take only who match by zips
+    write.csv(test_match,paste(filename,i,".csv",sep = ""),row.names = FALSE) # write to file with order
+    cat("File",paste(filename,i,".csv",sep = ""),"is saved to",getwd(),"\n") # inform user
   }
-### ABOVE FUNCTION SHOULD BE TESTED! ###
+  
+  Result <- data.frame()
+  for(i in 1:iterations)
+    Result <- rbind(Result,read.csv(paste(filename,i,".csv",sep = ""),row.names = NULL))
+  
+  setwd(main_path) # reset working directory
+  cat("Working directory is set to default,",main_path,"\n")
+  write.csv(Result,paste(filename,".csv",sep = ""),row.names = FALSE)
+  cat("File",paste(filename,".csv",sep = ""),"is saved to",getwd(),"\n") # inform user
+  
+  return(Result)
+}
   
 # a function for easily extracting summarized data out of unified data, on monthly basis.
 Outcost.Summary <- function(ship_unified, # the big unified shipdata, (latest) on monthly basis (e.g. month_m10 etc.)
@@ -971,6 +972,7 @@ ByState.Summary <- function(ship_unified, # the big unified shipping data, ultim
   return(output)
 }
 
+### PLOTLY CONTAINING FUNCTIONS SHOULD BE RE-TESTED (due to updates) ###
 # Distribution by state (choropleth) map
 # quickly map the output of ByState.Summary function, (choropleth map)
 ByState.Map <- function(data, # summarized data by state (output of function ByState.Summary()), monthly
@@ -1019,6 +1021,145 @@ save_tags <- function (tags, file, selfcontained = F, libdir = "./lib")
     unlink(libdir, recursive = TRUE)
   }
   return(htmltools::tags$iframe(src= file, height = "400px", width = "100%", style="border:0;"))
+}
+
+# finds shared elements accordingto a column in given data sets, up to 6
+Shared.Elements <- function(col,data1,data2,data3=NULL,data4=NULL,data5=NULL,data6=NULL){
+  Result <- intersect(data1[,col],data2[,col])
+  if(!is.null(data3))
+    Result <- intersect(Result,data3[,col])
+  if(!is.null(data4))
+    Result <- intersect(Result,data4[,col])
+  if(!is.null(data5))
+    Result <- intersect(Result,data5[,col])
+  if(!is.null(data6))
+    Result <- intersect(Result,data6[,col])
+  return(Result)
+}
+
+# multiplotly function  THIS FUNCTION IS WORKING!!
+MultiPlotly <- function(x,                    # data of x axis
+                        y,                    # data set of y axis
+                        main = "Plot_ly",      # main title
+                        fname = "Plot_ly",        # prefix for filename
+                        color = NULL,
+                        colorname = NULL,
+                        type = "scatter",
+                        mode = "markers",
+                        text = NULL, # hover text
+                        size = NULL,
+                        logy = NULL,
+                        col.blank = NULL # column numbers which require a margin from bottom for easy observation of names
+){      # height as inches
+  require(plotly)
+  m <- list(b = 200)
+  
+  dt_classes <- c("POSIXct","POSIXlt","POSIXt")
+  x <- as.data.frame(x)
+  y <- as.data.frame(y)
+  clr <- as.numeric(as.character(color))
+  for(j in 1:ncol(x)){ # 1 through total column number, for x
+    all_grobs <- NA
+    # rearrange the order for factors and characters, prevent unwanted sorting
+    if(class(x[,j])=="factor" || class(x[,j])=="character"){
+      xlabel <- list(title = colnames(x[j]),categoryorder = "array",categoryarray = x[,j])
+      print("Adjusting category order for x axis ...")
+    }
+    else
+      xlabel <- list(title = colnames(x[j]))
+    
+    # predetermined bottom margins for better display, apply for selected columns
+    if(any(j == col.blank)) margin = m
+    else margin = NULL
+    
+    for(i in 1:ncol(y)){ # 1 through total column number, for y
+      if (identical(x[,j],y[,i])) next() # pass through next step if identical vectors encountered
+      
+      plotname <- paste(main," #",i,sep = "") # initialize nomenclature
+      
+      # set the axis type to log scale according to column numbers
+      if (!is.null(logy) && any(logy == i))
+        current_type <- "log"
+      else 
+        current_type <- NULL
+      
+      # rearrange the order for factors and characters, prevent unwanted sorting
+      # if(class(y[,i])=="factor" || class(y[,i])=="character"){
+      if((class(y[,i])=="factor" || class(y[,i])=="character") && !any(class(y[,i]) %in% dt_classes)){
+        ylabel <- list(title = colnames(y[i]),categoryorder = "array",categoryarray = y[,j],type = current_type)
+        print("Adjusting category order for y axis ...")
+      }
+      else
+        ylabel <- list(title = colnames(y[i]),type = current_type)
+      
+      # plot and save
+      p <- plot_ly(x=x[,j],y=y[,i],type=type,mode=mode,size = size,color = clr,text = text) %>%
+        layout(title = plotname,xaxis = xlabel,yaxis = ylabel,margin = margin) %>%
+        colorbar(title = colorname)
+      
+      cat((j-1)*ncol(y)+i,colnames(x[j]),"vs",colnames(y[i]),"is plotted.\n")
+      all_grobs <- list(all_grobs,p) # maybe try without wrapping with as.widget()
+    }
+    # save all of the graphic objects as an html page list
+    print("Saving in progress...")
+    savename <- paste(fname,colnames(x[j]),"vs_all_LIST.html",sep = "_")
+    save_tags(all_grobs,savename)
+    cat("Image",savename,"saved to",getwd(),"\n")
+  }
+  # # save all of the graphic objects as an html page list
+  # print("Saving in progress...")
+  # save_tags(all_grobs,paste(fname,"LIST.html",sep = "_"))
+  # cat("Image",paste(fname,"LIST.html",sep = "_"),"saved to",getwd(),"\n")
+  return (TRUE)
+}
+
+# tests almost completed. this function multi-graphs a given data frame, according to determined facet. 
+# this function classifies and separates data frames using ggplot2's facet_grid() function
+Multi_Facet <- function(x,
+                        y,
+                        facet,
+                        main = "Facets",      # main title
+                        filename = "Multi_Facet",        # prefix for filename, without file extension
+                        directory = NULL,
+                        geom = "point",
+                        scales = "free_x",
+                        alpha = 1,
+                        libdir = "lib"
+){
+  library(ggplot2)
+  library(htmltools)
+  
+  main_path <- getwd() # main path before change
+  if(is.null(directory))
+    current_path <- paste(getwd(),paste("DataMatch",sample(1000,1),sep="_"),sep = "/") # folder names
+  else if(!is.null(directory))
+    current_path <- paste(getwd(),directory,sep = "/") # folder names
+  
+  dir.create(current_path) # create a new directory to store files
+  setwd(current_path) # set new working directory
+  cat("Working directory is set to",current_path,"\n")
+  
+  for(j in 1:ncol(x)){
+    current <- NA
+    for(i in 1:ncol(y)){
+      if (identical(x[,j],y[,i])) next()
+      init <- ggplot(my_samp, aes(x=x[,j], y=y[,i])) + 
+        switch (geom,
+                "jitter" = {geom_jitter(alpha = alpha)},
+                "point" = {geom_point(alpha = alpha)},
+                "line" = {geom_line(alpha = alpha)}
+        ) +
+        labs(title = main,x = colnames(x)[j],y = colnames(y)[i]) +
+        facet_grid(facet,scales = "free_x") # this is a useful binning for months
+      current <- tagList(current,plotly::ggplotly(init))
+    }
+    savename <- paste(filename,"_all_vs_",colnames(x)[j],".html",sep = "")
+    save_html(current,savename)#,libdir = libdir)
+    cat("File",savename,"saved to",getwd(),"\n")
+  }
+  setwd(main_path) # reset working directory
+  cat("Working directory is set to default,",main_path,"\n")
+  return(TRUE)
 }
 
 ### ----------------------------------------------------------------------- ###
