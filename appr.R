@@ -3,7 +3,7 @@
 ### - Author     : Mert Candar ------------------------------------------------------ ###
 ### - Study      : Predictive Modelling with Machine Learning ----------------------- ###
 ### - Class      : Advanced Physics Project Lab ------------------------------------- ###
-### - Supervisor : Altan Cakir ------------------------------------------------------ ###
+### - Supervisor : Dr.Altan Cakir --------------------------------------------------- ###
 ### - Department of Physics Engineering, Istanbul Technical University -------------- ###
 ### - Istanbul, Turkey -------------------------------------------------------------- ###
 ### --------------------------------------------------------------------------------- ###
@@ -800,14 +800,18 @@ Match.rows <- function(source,col.sou,target,col.tar){
 
 # this function is needed for filtering the shipping data. it gathers information about shipping types and one can decide
 # which type of shipping should be excluded.
-levels.ship <- function(data,col.type=6,col.cost=7,col.duration=11,distances=FALSE){
+levels.ship <- function(data,            # can be raw shipping data or matched version of it after cuts
+                        col.type=6,      # column number of types
+                        col.cost=7,      # column number of shipping costs
+                        col.duration=11, # column number of durations
+                        distances=FALSE){
   Result <- as.data.frame(levels(factor(data[,col.type])))
   Result$AveCost <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type]==x),col.cost])))
   Result$TotalCost <- sapply(Result[,1],function(x) sum(na.omit(data[which(data[,col.type]==x),col.cost])))
   Result$AveDuration <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type]==x),col.duration])))
   Result$Uses <- sapply(Result[,1],function(x) length(which(data$Type==x)))
   if(distances){
-    Result$Distance <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type] == x),20])))
+    Result$Distance <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type] == x),20]))) # col.dist taken as 20?
     Result$Index <- Result$Distance/(Result$AveCost*Result$AveDuration)
     colnames(Result) <- c("Type","AveCost","TotalCost","AveDuration","Uses","Distance","Index")
   }
@@ -1160,6 +1164,124 @@ Multi_Facet <- function(x,
   setwd(main_path) # reset working directory
   cat("Working directory is set to default,",main_path,"\n")
   return(TRUE)
+}
+
+### ---- FOLLOWING PERCEPTRON ALGORITHMS TAKEN FROM AN EXTERNAL SOURCE ---- ###
+distance.from.plane = function(z,w,b) {
+  sum(z*w) + b
+}
+
+classify.linear = function(x,w,b) {
+  distances = apply(x, 1, distance.from.plane, w, b)
+  # print("distances is : ")
+  # print(distances)
+  return(ifelse(distances < 0, -1, +1))
+}
+
+euclidean.norm <- function(x){
+  return(sqrt(sum(x * x)))
+}
+
+
+perceptron <- function(x,               # data to be classified
+                       y,               # training output
+                       learning.rate=1, # learning rate (for convergence?)
+                       maxepoch=1e3){   # maximum number of iterations
+  pb <- txtProgressBar(style = 3)
+  x <- data.frame(x)
+  w <- vector(length = ncol(x)) # initialize w
+  b <- 0 # Initialize b
+  k <- 0 # count updates
+  R <- max(apply(x, 1, euclidean.norm))
+  made.mistake <- TRUE # to enter the while loop
+  j <- 0
+  while (made.mistake & j < maxepoch){
+    made.mistake<-FALSE # hopefully
+    yc <- classify.linear(x,w,b)
+    cond <- y != yc
+    for (i in 1:nrow(x)){
+      if (!is.na(cond[i])){
+        if(cond[i]){
+          w <- w + learning.rate * y[i]*x[i,]
+          b <- b + learning.rate * y[i]*R^2
+          k <- k+1
+          made.mistake<-TRUE
+        }
+      }
+      else # skip if NA value encountered
+        next()
+    }
+    j = j + 1
+    setTxtProgressBar(pb, j/maxepoch)
+  }
+  s <- euclidean.norm(w)
+  close(pb)
+  return(list(w=w/s,b=b/s,updates=k))
+}
+### ----------------------------------------------------------------------- ###
+
+# For making deep classifications, i.e. using deep learning methods, following function creates a plot with
+# given data and classifies it. use library(h2o) and h2o.init(nthreads = -1, min_mem_size = "8G") commands before use.
+# input dataset should be three column, first two are numeric and last one is factor. column names are x,y 
+# and color respectively. apparently the last column contains colors.
+# example uses
+# classify.dl("Deep Learning",h2o.deeplearning(1:2,3,x,epochs=10),x,"Deep_Classification_ep10.pdf")
+
+classify.dl <- function(name,
+                        model,
+                        data,
+                        filename = NULL,
+                        div = 1e3){ # grid is made automatically
+  # form a grid
+  lims <- data.frame(xlim=c(max(data[,1]),min(data[,1])),ylim=c(max(data[,2]),min(data[,2])))
+  grid_testx <- seq(lims$xlim[1],lims$xlim[2],length.out = div)
+  grid_testy <- seq(lims$ylim[1],lims$ylim[2],length.out = div)
+  
+  grid_test <- data.frame()
+  for(i in 1:div)
+    grid_test <- rbind(grid_test,cbind(matrix(grid_testx,1000,1),rep(grid_testy[i],1000)))
+  
+  colnames(grid_test) <- c("x","y")
+  
+  # data <- as.h2o(data) # colnames(x) <- c("Distance","ShippingCost","color") originally
+  grid_test <- as.h2o(grid_test[(div*div):1,]) # reverse the order
+  
+  data <- as.data.frame(data) # get data from into R
+  pred <- as.data.frame(h2o.predict(model, grid_test))
+  n=0.5*(sqrt(nrow(grid_test))-1)
+  
+  if(!is.null(filename))
+    pdf(filename)
+  
+  plot(data[,-3],pch=19,col=data[,3],cex=0.5,xlim=c(lims$xlim[2],lims$xlim[1]),ylim=c(lims$ylim[2],lims$ylim[1]),main=name)
+  contour(grid_testx[div:1],grid_testy[div:1],z=array(ifelse(pred[,1]=="Red",0,1),dim=c(2*n+1,2*n+1)),col="blue",lwd=2,add=T)
+  
+  if(!is.null(filename))
+    dev.off()
+}
+
+# rearranged version od levels.ship, should be tested deeply
+levels.ship.ed <- function(data,            # can be raw shipping data or matched version of it after cuts
+                           col.type=6,      # column number of types
+                           col.cost=7,      # column number of shipping costs
+                           col.duration=11, # column number of durations
+                           distances=FALSE,
+                           loads=FALSE){
+  Result <- data.frame(Type=as.character(levels(factor(data[,col.type]))))
+  Result$AveCost <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type]==x),col.cost])))
+  Result$TotalCost <- sapply(Result[,1],function(x) sum(na.omit(data[which(data[,col.type]==x),col.cost])))
+  Result$AveDuration <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type]==x),col.duration])))
+  Result$Uses <- sapply(Result[,1],function(x) length(which(data$Type==x)))
+  
+  if(distances){
+    Result$Distance <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type] == x),20]))) # col.dist taken as 20?
+    Result$Index <- Result$Distance/(Result$AveCost*Result$AveDuration)
+  }
+  if(loads){
+    Result$TotalLoad <- sapply(Result[,1],function(x)sum(na.omit(data[which(data[,col.type]==x),26]))) # column number is taken as 26
+    Result$AveLoad <- sapply(Result[,1],function(x) mean(na.omit(data[which(data[,col.type]==x),26])))
+  }
+  return(Sort(Result,2,decreasing = TRUE))
 }
 
 ### ----------------------------------------------------------------------- ###
