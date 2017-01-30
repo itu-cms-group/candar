@@ -1368,6 +1368,68 @@ par.Filter.ShippingData <- function(Ship, # input raw shipping data after it is 
   return(Result)
 }
 
+# PARALLEL VERSION, need improvements at do.call section
+# input "source" as a vector or a list
+#############
+par.Search.List <- function(source, # object to be searched
+                            target, # object expected to include source at least once
+                            col,    # target column
+                            nthreads = NULL){ # number of cores to use
+  
+  if(is.null(nthreads)) nthreads = detectCores()
+  require(parallel)
+  cl <- makeCluster(nthreads) # initiate cluster
+  clusterExport(cl,c("source","target","col")) # export variables to the cluster
+  
+  Result <- parSapply(cl,source,function(x){
+    index <- which(target[,col]==x) # search the source in target, get indexes
+    if(length(index)!=0)
+      sapply(index, function(i) c(x,target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
+  })
+  
+  Result <- parLapply(cl, parLapply(cl,Result, function(y)
+    as.data.frame(matrix(y,length(y)/(ncol(target)+1),ncol(target)+1,byrow = T)))
+    ,data.frame, stringsAsFactors=FALSE)
+  stopCluster(cl) # stop cluster because the rest is serial
+  
+  # convert to data frame from list, following is time consuming and is NOT parallel
+  Result <- do.call(rbind, Result) ## THIS WORKS
+  colnames(Result) <- c("Source",colnames(target))
+  
+  return(Result)
+}
+
+# PARALLEL VERSION, need improvements at do.call
+# input "source" as a data frame
+par.Match.rows <- function(source,  # source data frame, this will be searched inside target
+                           col.sou, # column number of source data to be searched
+                           target,  # target data frame, expected to have source data frame's values
+                           col.tar, # column number of target data frame to be inspected
+                           nthreads = NULL # number of cores
+){
+  if(is.null(nthreads)) nthreads = detectCores()
+  require(parallel)
+  cl <- makeCluster(nthreads) # initiate cluster
+  clusterExport(cl,c("source","target","col.tar","col.sou")) # export variables to the cluster
+  
+  Result <- parLapply(cl,seq(nrow(source)),function(j){
+    index <- which(source[j,col.sou]==target[,col.tar]) # search the source in target, get indexes
+    if(length(index)!=0)
+      sapply(index, function(i) c(source[j,],target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
+    else
+      c(source[j,],rep(NA,ncol(target))) # try with ifelse of base or if_else of dplyr
+  })
+  
+  Result <- parLapply(cl, parLapply(cl,Result, function(y) # need arrangement
+    as.data.frame(matrix(y,length(y)/(ncol(target)+ncol(source)),ncol(target)+ncol(source),byrow = T)))
+    ,data.frame, stringsAsFactors=FALSE)
+  stopCluster(cl)
+  
+  Result <- do.call(rbind, Result) ## THIS WORKS
+  colnames(Result) <- c(colnames(source),colnames(target))
+  return(Result)
+}
+
 ### ----------------------------------------------------------------------- ###
 ### - Text File and Data Editor Functions --------------------------------- ###
 ### ----------------------------------------------------------------------- ###
