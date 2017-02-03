@@ -82,6 +82,7 @@ par.Filter.ShippingData <- function(Ship, # input raw shipping data after it is 
                                     file.name="Shipping_Filtered.csv", # name of the file to be written
                                     nthreads = NULL){
   
+  Result <- Ship
   # Filter
   if(filter){
     Result <- Ship[-which(Ship$ShippingCost==0),] # filter by cost, exclude transactions with no cost
@@ -98,7 +99,6 @@ par.Filter.ShippingData <- function(Ship, # input raw shipping data after it is 
   }
   return(Result)
 }
-
 # PARALLEL VERSION, need improvements at do.call section
 # input "source" as a vector or a list
 #############
