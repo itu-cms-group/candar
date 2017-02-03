@@ -76,14 +76,17 @@ par.LocationData <- function(data,       # can be raw shipdata or saledata, or a
 # PARALLEL VERSION
 # this function is for filtering and gathering location information about shipping data
 par.Filter.ShippingData <- function(Ship, # input raw shipping data after it is formatted with Format.ShipData()
+                                    filter = FALSE,
                                     location.info=TRUE, # in order to collect location lat/lon info about a row
                                     file.write=TRUE, # true if you want to save to csv file
                                     file.name="Shipping_Filtered.csv", # name of the file to be written
                                     nthreads = NULL){
   
   # Filter
-  Result <- Ship[-which(Ship$ShippingCost==0),] # filter by cost, exclude transactions with no cost
-  Result <- Result[-which(Result$Type == "UPS Ground"),] # filter by type, exclude UPS Ground shipping
+  if(filter){
+    Result <- Ship[-which(Ship$ShippingCost==0),] # filter by cost, exclude transactions with no cost
+    Result <- Result[-which(Result$Type == "UPS Ground"),] # filter by type, exclude UPS Ground shipping
+  }
   
   # Collect data for locations
   if(location.info) Result <- cbind(Result,par.LocationData(Result,nthreads=nthreads)) # column-bind them together
