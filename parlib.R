@@ -99,66 +99,119 @@ par.Filter.ShippingData <- function(Ship, # input raw shipping data after it is 
   }
   return(Result)
 }
+
 # PARALLEL VERSION, need improvements at do.call section
 # input "source" as a vector or a list
 #############
+# par.Search.List <- function(source, # object to be searched
+#                             target, # object expected to include source at least once
+#                             col,    # target column
+#                             nthreads = NULL){ # number of cores to use
+#   
+#   if(is.null(nthreads)) nthreads = detectCores()
+#   require(parallel)
+#   cl <- makeCluster(nthreads) # initiate cluster
+#   clusterExport(cl,c("source","target","col")) # export variables to the cluster
+#   
+#   Result <- parSapply(cl,source,function(x){
+#     index <- which(target[,col]==x) # search the source in target, get indexes
+#     if(length(index)!=0)
+#       sapply(index, function(i) c(x,target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
+#   })
+#   
+#   Result <- parLapply(cl, parLapply(cl,Result, function(y)
+#     as.data.frame(matrix(y,length(y)/(ncol(target)+1),ncol(target)+1,byrow = T)))
+#     ,data.frame, stringsAsFactors=FALSE)
+#   stopCluster(cl) # stop cluster because the rest is serial
+#   
+#   # convert to data frame from list, following is time consuming and is NOT parallel
+#   Result <- do.call(rbind, Result) ## THIS WORKS
+#   colnames(Result) <- c("Source",colnames(target))
+#   
+#   return(Result)
+# }
+
+# PARALLEL VERSION, need improvements at do.call section
+# input "source" as a vector or a list, in CHARACTER type
+# works on linux server too, but can be killed by system
 par.Search.List <- function(source, # object to be searched
                             target, # object expected to include source at least once
                             col,    # target column
                             nthreads = NULL){ # number of cores to use
-  
-  if(is.null(nthreads)) nthreads = detectCores()
-  require(parallel)
+  require(parallel);require(dplyr)
+  lapply(list(source,target,col), force) # forcing is needed on linux systems
+  if(is.null(nthreads)) nthreads = detectCores() # if not specified, use all threads
   cl <- makeCluster(nthreads) # initiate cluster
-  clusterExport(cl,c("source","target","col")) # export variables to the cluster
-  
-  Result <- parSapply(cl,source,function(x){
-    index <- which(target[,col]==x) # search the source in target, get indexes
+  clusterExport(cl,c("source","target","col"),envir = environment()) # export variables to the cluster
+  print("cluster initiating and exporting finished")
+  temp <- parSapply(cl,seq_along(source),function(i){ # store indexes
+    index <- which(target[,col]==source[i]) # search the source in target, get indexes
     if(length(index)!=0)
-      sapply(index, function(i) c(x,target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
+      cbind(i,index)
   })
-  
-  Result <- parLapply(cl, parLapply(cl,Result, function(y)
-    as.data.frame(matrix(y,length(y)/(ncol(target)+1),ncol(target)+1,byrow = T)))
-    ,data.frame, stringsAsFactors=FALSE)
-  stopCluster(cl) # stop cluster because the rest is serial
-  
-  # convert to data frame from list, following is time consuming and is NOT parallel
-  Result <- do.call(rbind, Result) ## THIS WORKS
-  colnames(Result) <- c("Source",colnames(target))
-  
-  return(Result)
+  print("I finish parSapply")
+  temp <- parLapply(cl,temp,as.data.frame)
+  stopCluster(cl) # stop cluster, rest is serial
+  print("I finish parlappy")
+  temp <- bind_rows(temp) # convert into a data frame to use it easily
+  print("Indexing finished")
+  return(cbind(source[temp[,1]],target[temp[,2],]))
 }
 
 # PARALLEL VERSION, need improvements at do.call
 # input "source" as a data frame
-par.Match.rows <- function(source,  # source data frame, this will be searched inside target
-                           col.sou, # column number of source data to be searched
-                           target,  # target data frame, expected to have source data frame's values
-                           col.tar, # column number of target data frame to be inspected
-                           nthreads = NULL # number of cores
-){
-  if(is.null(nthreads)) nthreads = detectCores()
-  require(parallel)
-  cl <- makeCluster(nthreads) # initiate cluster
-  clusterExport(cl,c("source","target","col.tar","col.sou")) # export variables to the cluster
-  
-  Result <- parLapply(cl,seq(nrow(source)),function(j){
-    index <- which(source[j,col.sou]==target[,col.tar]) # search the source in target, get indexes
-    if(length(index)!=0)
-      sapply(index, function(i) c(source[j,],target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
-    else
-      c(source[j,],rep(NA,ncol(target))) # try with ifelse of base or if_else of dplyr
+# par.Match.rows <- function(source,  # source data frame, this will be searched inside target
+#                            col.sou, # column number of source data to be searched
+#                            target,  # target data frame, expected to have source data frame's values
+#                            col.tar, # column number of target data frame to be inspected
+#                            nthreads = NULL # number of cores
+# ){
+#   if(is.null(nthreads)) nthreads = detectCores()
+#   require(parallel)
+#   cl <- makeCluster(nthreads) # initiate cluster
+#   clusterExport(cl,c("source","target","col.tar","col.sou")) # export variables to the cluster
+#   
+#   Result <- parLapply(cl,seq(nrow(source)),function(j){
+#     index <- which(source[j,col.sou]==target[,col.tar]) # search the source in target, get indexes
+#     if(length(index)!=0)
+#       sapply(index, function(i) c(source[j,],target[i,])) # THIS IS OKAY JUST NEEDS A CONVERTION TO DATA FRAME
+#     else
+#       c(source[j,],rep(NA,ncol(target))) # try with ifelse of base or if_else of dplyr
+#   })
+#   
+#   Result <- parLapply(cl, parLapply(cl,Result, function(y) # need arrangement
+#     as.data.frame(matrix(y,length(y)/(ncol(target)+ncol(source)),ncol(target)+ncol(source),byrow = T)))
+#     ,data.frame, stringsAsFactors=FALSE)
+#   stopCluster(cl)
+#   
+#   Result <- do.call(rbind, Result) ## THIS WORKS
+#   colnames(Result) <- c(colnames(source),colnames(target))
+#   return(Result)
+# }
+
+
+# PARALLEL VERSION, need improvements at do.call
+# input "source" as a data frame
+par.Match.rows <- function(source,col.sou,target,col.tar,nthreads=NULL){
+  lapply(c(source,col.sou,target,col.tar), force)
+  library(parallel);library(dplyr)
+  if(is.null(nthreads)) nthreads <- detectCores() # use all cores if not specified
+  cl<-makeCluster(nthreads) # initiate the cluster
+  clusterExport(cl,c("source","target","col.sou","col.tar"),envir = environment()) # export variables
+  print("I initiate the cluster and export variables")
+  temp <- parSapply(cl,seq_along(source[,col.sou]),function(i){
+    index <- which(target[,col.tar]==source[i,col.sou]) # search the source in target, get indexes
+    if(length(index)!=0) # if found
+      cbind(i,index) # store just indexes
   })
   
-  Result <- parLapply(cl, parLapply(cl,Result, function(y) # need arrangement
-    as.data.frame(matrix(y,length(y)/(ncol(target)+ncol(source)),ncol(target)+ncol(source),byrow = T)))
-    ,data.frame, stringsAsFactors=FALSE)
-  stopCluster(cl)
-  
-  Result <- do.call(rbind, Result) ## THIS WORKS
-  colnames(Result) <- c(colnames(source),colnames(target))
-  return(Result)
+  print("I finish parSapply")
+  temp <- parLapply(cl,temp,as.data.frame)
+  stopCluster(cl) # stop cluster, rest is serial
+  print("I finish parlappy")
+  temp <- bind_rows(temp) # convert into a data frame to use it easily
+  print("Indexing finished")
+  return(cbind(source[temp[,1],],target[temp[,2],]))
 }
 
 # # PARALLEL VERSION
