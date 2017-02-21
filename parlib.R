@@ -291,15 +291,15 @@ par.Match.ShipData <- function(shipfiltered, # ultimate filtered and location da
                                month, # input a month number as integer
                                saledata, # raw sale data e.g. Month10.txt, Month11.txt etc.
                                iterations = 10, # number of part to divide into when computing
-                               filename = "Most_Expensive_Matched_M_", # file name to be saved
+                               filename = NULL, # file name to be saved
                                begin = 1, # beginning of the for loop, could be continued from other steps
                                ship.sonumber = 8, # sonumber column in filtered shipping data
                                sale.sonumber = 1, # sonumber column in filtered sale data
                                nthreads = NULL # number of cores to use
 ){
-  # force(saledata)
-  require("lubridate")
-  require("parallel")
+  # forcing variables to environment is neccessary in linux machines
+  lapply(c(shipfiltered,month,saledata,iterations,filename,begin,ship.sonumber,sale.sonumber,nthreads),force)
+  require("lubridate");require("parallel")
 
   # pull out just one month, and sort according to shipping cost
   temp_ship <- Sort(shipfiltered[which(month(shipfiltered$DateShipped)==as.integer(month)),],7,decreasing = TRUE)
@@ -335,5 +335,42 @@ par.Match.ShipData <- function(shipfiltered, # ultimate filtered and location da
     Result <- rbind(Result,test_match)
     setTxtProgressBar(pb, i/iterations)
   }
+  
+  if(!is.null(filename)){
+    write.csv(Result,filename,row.names = FALSE)
+    cat("File",filename,"is saved to",getwd(),"\n") # inform user
+  }
+  
   return(Result)
+}
+
+# FOLLOWINGS SHOULD BE TESTED
+# word-by-word string searching for each element in a vector or a list by splitting, returns indexes
+par.which.containingString <- function(x,ask,sep = " ",nthreads = NULL){ # make the cluster as export
+  require(parallel)
+  force(x);force(ask);force(sep);
+  if(is.null(nthreads)) nthreads = detectCores()
+  cl <- makeCluster(nthreads)
+  clusterExport(cl,c("x","ask","sep"))
+  return(na.omit(parSapply(cl,seq.int(x), function(i)
+    ifelse(any(as.character(unlist(strsplit(x[i],split = sep))) %in% ask),i,NA))))  
+}
+
+# Please note that this function works just for ONE MONTH of data, e.g. Month10.txt etc.
+# amount of daily sales for a full month, for a given list of item names as strings
+# if the amount of days are huge then do this: Raw_SaleData <- Raw_SaleData[-which(year(Raw_SaleData$ShippingDate)<2000),]
+par.sales.daily <- function(raw_sale,category,nthreads=NULL){
+  require(lubridate)
+  require(parallel)
+  force(raw_sale);force(category)
+  if(is.null(nthreads)) nthreads = detectCores()
+  cl <- makeCluster(nthreads)
+  clusterExport(cl,c("raw_sale","category"))
+  daynum <- days_in_month(raw_sale$ShippingDate[sample.int(nrow(raw_sale),1)]) # get number of days in that month
+  Result <- parSapply(cl,category,function(x){ 
+    temp <- raw_sale[which.containingString(raw_sale$ItemDescription,x),c(2,7)] # only shipping date and unitsshipped
+    parSapply(cl,seq.int(daynum),function(y) 
+      sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
+  })
+  return(data.frame(Days=seq.int(daynum),Result))
 }
