@@ -1627,6 +1627,20 @@ par.Match.ShipData <- function(shipfiltered, # ultimate filtered and location da
   return(Result)
 }
 
+# Please note that this function works just for ONE MONTH of data, e.g. Month10.txt etc.
+# amount of daily sales for a full month, for a given list of item names as strings
+# if the amount of days are huge then do this: Raw_SaleData <- Raw_SaleData[-which(year(Raw_SaleData$ShippingDate)<2000),]
+sales.daily <- function(raw_sale,category){
+  require(lubridate)
+  daynum <- days_in_month(raw_sale$ShippingDate[sample.int(nrow(raw_sale),1)]) # get number of days in that month
+  Result <- sapply(category,function(x){ 
+    temp <- raw_sale[which.containingString(raw_sale$ItemDescription,x),c(2,7)] # only shipping date and unitsshipped
+    sapply(seq.int(daynum),function(y) 
+      sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
+  })
+  return(data.frame(Days=seq.int(daynum),Result))
+}
+
 ### ----------------------------------------------------------------------- ###
 ### - Text File and Data Editor Functions --------------------------------- ###
 ### ----------------------------------------------------------------------- ###
