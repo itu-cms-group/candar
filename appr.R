@@ -1641,6 +1641,88 @@ sales.daily <- function(raw_sale,category){
   return(data.frame(Days=seq.int(daynum),Result))
 }
 
+# PARALLEL VERSION
+# word-by-word string searching for each element in a vector or a list by splitting, returns indexes
+par.which.containingString <- function(x, # the vector to be searched if it contain variable "ask"
+                                       ask, # the variable or list to search in target "x"
+                                       sep = " ", # separator to split
+                                       index = NULL, # index number to look in each row
+                                       cl = NULL, # cluster to specify if one does not need this function to initiate it itself
+                                       nthreads = NULL){ # make the cluster as export
+  require(parallel) # export the library
+  force(x);force(ask);force(sep);
+  if(is.null(cl)){ # if no cluster specified, make a new one
+    if(is.null(nthreads)) nthreads = detectCores() # if number of cores is not specified, use all of them
+    cl <- makeCluster(nthreads)
+    clusterExport(cl,c("x","ask","sep"),envir = environment()) # introduce variables to cluster
+    stopcl <- TRUE
+  }
+  
+  if(is.null(index)) # if index is not specified, look for all elements after split
+    Result <- na.omit(parSapply(cl,seq.int(x), function(i) # list the indexes which is containing given string
+      ifelse(any(as.character(unlist(strsplit(x[i],split = sep))) %in% ask),i,NA)))
+  else # just look for the element specified by "index" if it matches with ask value
+    Result <- na.omit(parSapply(cl,seq.int(x), function(i) # list the indexes which is containing given string
+      ifelse(any(as.character(unlist(strsplit(x[i],split = sep))[index]) %in% ask),i,NA)))
+  
+  if(stopcl) # stop the self-initiated cluster
+    stopCluster(cl)
+  return(Result)
+}
+
+# THIS IS NOT FOR MULTIPLE CATEGORIES, WORKS FOR JUST ONE CATEGORY, ONE MONTH!
+# input a list, function will search its elements in raw_sale in the column index col.target
+sales.daily.perElement <- function(raw_sale, # sale data (raw or arranged) for preferably one category
+                                   source, # the quantity which will be searched for
+                                   col.target){ # target column of the sale data which will be searched in
+  require(lubridate)
+  daynum <- days_in_month(raw_sale$ShippingDate[sample.int(nrow(raw_sale),1)])
+  Result <- sapply(source,function(x){ 
+    temp <- raw_sale[which(raw_sale[,col.target]==x),c(2,7)] # only shipping date and unitsshipped
+    sapply(seq.int(daynum),function(y) 
+      sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
+  })
+  return(data.frame(Days=seq.int(daynum),Result))
+}
+
+# PARALLEL VERSION
+# THIS IS NOT FOR MULTIPLE CATEGORIES, WORKS FOR JUST ONE CATEGORY, ONE MONTH!
+# input a list, function will search its elements in raw_sale in the column index col.target
+# and return the number of sales per given element, daily
+# for example: input the some zip numbers, it will list how many products are sold in one month to those zips
+par.sales.daily.perElement <- function(raw_sale,source,col.target,cl = NULL,nthreads = NULL){
+  require(lubridate)
+  require(parallel)
+  daynum <- days_in_month(raw_sale$ShippingDate[sample.int(nrow(raw_sale),1)])
+  force(c(raw_sale,source,col.target))#;force(ask);force(sep);
+  if(is.null(cl)){ # if no cluster specified, initiate a new one
+    if(is.null(nthreads)) nthreads = detectCores() # if number of cores is not specified, use all of them
+    cl <- makeCluster(nthreads)
+    clusterExport(cl,c("raw_sale","source","col.target","day"),envir = environment()) # introduce variables to cluster, from current environment
+    stopcl <- TRUE
+  }
+  Result <- parSapply(cl,source,function(x){ 
+    temp <- raw_sale[which(raw_sale[,col.target]==x),c(2,7)] # only shipping date and unitsshipped
+    sapply(seq.int(daynum),function(y) 
+      sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
+  })
+  if(stopcl)
+    stopCluster(cl)
+  return(data.frame(Days=seq.int(daynum),Result))
+}                                      
+                   
+# easy-import raw sale data
+Import.SaleData <- function(filename){
+  temp <- read.table(filename,sep = ",",colClasses = "character")
+  return(Format.SaleData(temp))
+}
+
+# easy-import raw shipping data
+Import.ShipData <- function(filename){
+  temp <- read.table(filename,sep = ",",colClasses = "character")
+  return(Format.ShippingData(temp))
+}                      
+                   
 ### ----------------------------------------------------------------------- ###
 ### - Text File and Data Editor Functions --------------------------------- ###
 ### ----------------------------------------------------------------------- ###
