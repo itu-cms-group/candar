@@ -1690,38 +1690,80 @@ sales.daily.perElement <- function(raw_sale, # sale data (raw or arranged) for p
 # input a list, function will search its elements in raw_sale in the column index col.target
 # and return the number of sales per given element, daily
 # for example: input the some zip numbers, it will list how many products are sold in one month to those zips
-par.sales.daily.perElement <- function(raw_sale,source,col.target,cl = NULL,nthreads = NULL){
+par.sales.daily.perElement <- function(raw_sale,       # target data frame
+                                       source,         # source, as vector or list, this will be searched inside raw_sale
+                                       col.target,     # column number to select in target frame
+                                       cl = NULL,      # specify a cluster or leave it null for function initiates itself
+                                       nthreads = NULL # number of threads to use
+){
   require(lubridate)
   require(parallel)
-  daynum <- days_in_month(raw_sale$ShippingDate[sample.int(nrow(raw_sale),1)])
-  force(c(raw_sale,source,col.target))#;force(ask);force(sep);
-  if(is.null(cl)){ # if no cluster specified, initiate a new one
+  mnths <- as.integer(levels(factor(month(raw_sale$ShippingDate))))
+  
+  force(c(raw_sale,source,col.target)) # force variables to enter into environment
+  if(is.null(cl)){ # if no cluster specified, make a new one
     if(is.null(nthreads)) nthreads = detectCores() # if number of cores is not specified, use all of them
     cl <- makeCluster(nthreads)
     clusterExport(cl,c("raw_sale","source","col.target","day"),envir = environment()) # introduce variables to cluster, from current environment
     stopcl <- TRUE
   }
-  Result <- parSapply(cl,source,function(x){ 
-    temp <- raw_sale[which(raw_sale[,col.target]==x),c(2,7)] # only shipping date and unitsshipped
-    sapply(seq.int(daynum),function(y) 
-      sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
-  })
+  
+  output <- data.frame() # final output
+  for(i in mnths){ # for all months included in the raw_sale dataframe
+    raw_temp <- raw_sale[which(month(raw_sale$ShippingDate)==i),] # take data only for current month
+    daynum <- days_in_month(raw_temp$ShippingDate[sample.int(nrow(raw_temp),1)]) # get the current month's total day number
+    Result <- parSapply(cl,source,function(x){ 
+      temp <- raw_temp[which(raw_temp[,col.target]==x),c(2,7)] # only shipping date and unitsshipped
+      sapply(seq.int(daynum),function(y) 
+        sum(na.omit(temp$UnitsShipped[which(day(temp$ShippingDate)==y)])))
+    })
+    output <- rbind(output,data.frame(Days=seq.int(daynum),Result))
+  }
+  
   if(stopcl)
     stopCluster(cl)
-  return(data.frame(Days=seq.int(daynum),Result))
-}                                      
-                   
-# easy-import raw sale data
+  return(output)
+}
+
+# easy-import and format sale data
 Import.SaleData <- function(filename){
   temp <- read.table(filename,sep = ",",colClasses = "character")
   return(Format.SaleData(temp))
 }
 
-# easy-import raw shipping data
+# easy-import and format shipping data
 Import.ShipData <- function(filename){
   temp <- read.table(filename,sep = ",",colClasses = "character")
   return(Format.ShippingData(temp))
-}                      
+}
+
+# for given two multi-column data frames of xdata and ydata, this function
+# calculates cross-correlation between their columns and lists them with
+# max, root-mean-square information, initially built to list the cross correlation
+# between two product categories for US states
+cclist <- function(xdata,                # first data frame, considered as x
+                   ydata,                # second data frame, considered as y
+                   cat1 = "Category1",   # category names, they will be listed in results
+                   cat2 = "Category2",
+                   type = "correlation", # type, (cross) "correlation" or "covariance"
+                   lag.max = 20          # maximum lag value to calculate cross-correlation
+){
+  Result <- lapply(seq.int(ncol(xdata)),function(x){ # outer loop, for x
+    # note that transpose is taken for a better data shape and as.data.frame for use of function "bind_rows"
+    as.data.frame(t(sapply(seq.int(ncol(ydata)),function(y){ # inner loop, for y
+      # calculate cross-correlation and take only numerical values
+      temp <- ccf(xdata[,x],ydata[,y],type = type,lag.max = lag.max,plot = FALSE)$acf
+      # combine with other values such as max, lag at which the cor is max, rott-mean-square, and CC values
+      c(cat1,cat2,colnames(xdata)[x],colnames(ydata)[y],max(temp),(which.max(temp)-(lag+1)),rms(temp),temp)
+    })))
+  })
+  
+  Result <- dplyr::bind_rows(Result) # give the final shape, from list to data frame
+  colnames(Result) <- c("Category1","Category2","StateAbb1","StateAbb2","MaxCC","MaxCCatLag",
+                        "RmsCC",as.character(-lag.max:lag.max)) # rearrange column names
+  Result[,5:(8+lag.max*2)] <- sapply(Result[,5:(8+lag.max*2)],as.numeric) # set the column types
+  return(Result)
+}                    
                    
 ### ----------------------------------------------------------------------- ###
 ### - Text File and Data Editor Functions --------------------------------- ###
