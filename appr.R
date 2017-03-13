@@ -1285,33 +1285,27 @@ levels.ship.ed <- function(data,            # can be raw shipping data or matche
 }
 
 # word-by-word string searching for each element in a vector or a list by splitting, returns indexes
-which.containingString <- function(x,ask,sep = " ")
-  return(na.omit(sapply(seq.int(x), function(i)
-    ifelse(any(as.character(unlist(strsplit(x[i],split = sep))) %in% ask),i,NA))))
+# which.containingString <- function(x,ask,sep = " ")
+#   return(na.omit(sapply(seq.int(x), function(i)
+#     ifelse(any(as.character(unlist(strsplit(x[i],split = sep))) %in% ask),i,NA))))
 
-
-# PARALLEL VERSION, CPU time is reduced by ~30% (on 4 threaded computer) compared to serial version of this same function
-# input is zip code. easier search of coordinates, this function returns just lat and lon
-par.zip.coordinates <- function(x,nthreads = NULL){
-  require(parallel)
-  if(is.null(nthreads)) nthreads <- detectCores() # if not specified, use all available cores
-  if(!exists("Zips")) Zips <- GetZips() # if zip database does not exists, import it.
-  cl <-  makeCluster(nthreads) # initiate a cluster
-  lapply(c("Zips","x"), function(n) clusterExport(cl,n)) # export variables
-  Result <- as.data.frame(matrix(I(unlist(
-    parLapply(cl,x,function(n)Zips[match(n,Zips$Postal.Code),c(6,7)]) # parallel computation for lapply()
-  )),length(x),2,byrow = TRUE)) # find and convert result to data frame
-  stopCluster(cl)
-  colnames(Result) <- c("Lattitude","Longitude")
-  return(cbind(as.numeric(as.character(Result[,1])),as.numeric(as.character(Result[,2]))))
+which.containingString <- function(x,ask,sep = " ",index = NULL){
+  if(is.null(index))
+    return(na.omit(sapply(seq.int(x), function(i)
+      ifelse(any(as.character(unlist(strsplit(x[i],split = sep))) %in% ask),i,NA))))
+  else
+    return(na.omit(sapply(seq.int(x), function(i)
+      ifelse(any(as.character(unlist(strsplit(x[i],split = sep))[index]) %in% ask),i,NA))))
 }
 
-# PARALLEL VERSION, CPU time is reduced by ~30% (on 4 threaded computer) compared to serial version of this same function
+# PARALLEL VERSION, CPU time is reduced by ~30% (on 4 threaded computer) 
+# compared to serial version of this same function
 # input is zip code. easier search of coordinates, this function returns just lat and lon
 par.zip.coordinates <- function(x,nthreads = NULL){
   require(parallel)
   if(is.null(nthreads)) nthreads <- detectCores() # if not specified, use all available cores
   if(!exists("Zips")) Zips <- GetZips() # if zip database does not exists, import it.
+  force(c(Zips,x))
   cl <-  makeCluster(nthreads) # initiate a cluster
   clusterExport(cl,c("Zips","x")) # export variables
   Result <- as.data.frame(matrix(I(unlist(
@@ -1329,6 +1323,7 @@ par.zip.location <- function(x,nthreads = NULL){
   require(parallel)
   if(is.null(nthreads)) nthreads <- detectCores() # if not specified, use all available cores
   if(!exists("Zips")) Zips <- GetZips() # if zip database does not exists, import it.
+  force(c(Zips,x))
   cl <-  makeCluster(nthreads) # initiate a cluster
   clusterExport(cl,c("Zips","x")) # export variables
   Result <- as.data.frame(matrix(unlist(
@@ -1350,6 +1345,7 @@ par.LocationData <- function(data,       # can be raw shipdata or saledata, or a
   require(parallel)
   require(geosphere)
   if(!exists("Zips")) Zips <- GetZips() # if zip database does not exists, import it.
+  force(c(data,col.sen,col.rec)) # force them to enter the environment (strict programming)
   Result <- as.data.frame(matrix(NA,nrow(data),9)) # preallocate output matrix
   colnames(Result) <- c("S.Lat","S.Lon","R.Lat","R.Lon","S.City","S.StateCode","R.City","R.StateCode","Distance")
   
@@ -1641,6 +1637,7 @@ sales.daily <- function(raw_sale,category){
   return(data.frame(Days=seq.int(daynum),Result))
 }
 
+                   
 # PARALLEL VERSION
 # word-by-word string searching for each element in a vector or a list by splitting, returns indexes
 par.which.containingString <- function(x, # the vector to be searched if it contain variable "ask"
@@ -1674,6 +1671,8 @@ par.which.containingString <- function(x, # the vector to be searched if it cont
 
 # THIS IS NOT FOR MULTIPLE CATEGORIES, WORKS FOR JUST ONE CATEGORY, ONE MONTH!
 # input a list, function will search its elements in raw_sale in the column index col.target
+# and return the number of sales per given element, daily
+# for example: input the some zip numbers, it will list how many products are sold in one month to those zips
 sales.daily.perElement <- function(raw_sale, # sale data (raw or arranged) for preferably one category
                                    source, # the quantity which will be searched for
                                    col.target){ # target column of the sale data which will be searched in
