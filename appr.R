@@ -1657,6 +1657,8 @@ par.which.containingString <- function(x, # the vector to be searched if it cont
     clusterExport(cl,c("x","ask","sep"),envir = environment()) # introduce variables to cluster
     stopcl <- TRUE
   }
+  else
+    stopcl <- FALSE
   
   if(is.null(index)) # if index is not specified, look for all elements after split
     Result <- na.omit(parSapply(cl,seq.int(x), function(i) # list the indexes which is containing given string
@@ -1707,6 +1709,8 @@ par.sales.daily.perElement <- function(raw_sale,       # target data frame
     clusterExport(cl,c("raw_sale","source","col.target","day"),envir = environment()) # introduce variables to cluster, from current environment
     stopcl <- TRUE
   }
+  else
+    stopcl <- FALSE
   
   output <- data.frame() # final output
   for(i in mnths){ # for all months included in the raw_sale dataframe
